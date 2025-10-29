@@ -1,18 +1,14 @@
 # syntax=docker/dockerfile:1
-
-# ---- Base Python Environment ----
 FROM python:3.10-slim
 
 WORKDIR /app
-
-# Copy your project
 COPY . .
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y curl git build-essential cmake
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r backend/requirements.txt
+# Install Python dependencies (note: no backend/ prefix)
+RUN pip install --no-cache-dir -r requirements.txt
 
 # ---- Build Ollama from source ----
 WORKDIR /app/ollama
@@ -27,8 +23,7 @@ RUN go mod download && go build -o /usr/local/bin/ollama .
 # ---- Back to app root ----
 WORKDIR /app
 
-# Expose ports
 EXPOSE 8080 11434
 
-# ---- Run both Ollama and FastAPI ----
+# Start both Ollama and FastAPI
 CMD bash -c "ollama serve & uvicorn backend.main:app --host 0.0.0.0 --port 8080"
