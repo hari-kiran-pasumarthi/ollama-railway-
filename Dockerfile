@@ -47,7 +47,7 @@ FROM base AS cpu
 RUN dnf install -y gcc-toolset-11-gcc gcc-toolset-11-gcc-c++
 ENV PATH=/opt/rh/gcc-toolset-11/root/usr/bin:$PATH
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-cpu,target=/root/.ccache \
     cmake --preset 'CPU' \
         && cmake --build --parallel ${PARALLEL} --preset 'CPU' \
         && cmake --install build --component CPU --strip --parallel ${PARALLEL}
