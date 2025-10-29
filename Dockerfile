@@ -1,177 +1,34 @@
-# vim: filetype=dockerfile
+# syntax=docker/dockerfile:1
 
-ARG FLAVOR=${TARGETARCH}
-ARG PARALLEL=8
+# ---- Base Python Environment ----
+FROM python:3.10-slim
 
-ARG ROCMVERSION=6.3.3
-ARG JETPACK5VERSION=r35.4.1
-ARG JETPACK6VERSION=r36.4.0
-ARG CMAKEVERSION=3.31.2
-ARG VULKANVERSION=1.4.321.1
+WORKDIR /app
 
-# We require gcc v10 minimum
-FROM --platform=linux/amd64 rocm/dev-almalinux-8:${ROCMVERSION}-complete AS base-amd64
-RUN yum install -y yum-utils \
-    && yum-config-manager --add-repo https://dl.rockylinux.org/vault/rocky/8.5/AppStream/\$basearch/os/ \
-    && rpm --import https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-8 \
-    && dnf install -y yum-utils ccache gcc-toolset-10-gcc-10.2.1-8.2.el8 gcc-toolset-10-gcc-c++-10.2.1-8.2.el8 gcc-toolset-10-binutils-2.35-11.el8 \
-    && dnf install -y ccache \
-    && yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
-ENV PATH=/opt/rh/gcc-toolset-10/root/usr/bin:$PATH
-ARG VULKANVERSION
-RUN wget https://sdk.lunarg.com/sdk/download/${VULKANVERSION}/linux/vulkansdk-linux-x86_64-${VULKANVERSION}.tar.xz -O /tmp/vulkan.tar.xz \
-    && tar xvf /tmp/vulkan.tar.xz \
-    && dnf -y install ninja-build \
-    && ln -s /usr/bin/python3 /usr/bin/python \
-    && /${VULKANVERSION}/vulkansdk -j 8 vulkan-headers \
-    && /${VULKANVERSION}/vulkansdk -j 8 shaderc
-RUN cp -r /${VULKANVERSION}/x86_64/include/* /usr/local/include/ \
-    && cp -r /${VULKANVERSION}/x86_64/lib/* /usr/local/lib
-ENV PATH=/${VULKANVERSION}/x86_64/bin:$PATH
-
-FROM --platform=linux/arm64 almalinux:8 AS base-arm64
-RUN yum install -y yum-utils epel-release \
-    && dnf install -y clang ccache \
-    && yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/sbsa/cuda-rhel8.repo
-ENV CC=clang CXX=clang++
-
-FROM base-${TARGETARCH} AS base
-ARG CMAKEVERSION
-RUN curl -fsSL https://github.com/Kitware/CMake/releases/download/v${CMAKEVERSION}/cmake-${CMAKEVERSION}-linux-$(uname -m).tar.gz | tar xz -C /usr/local --strip-components 1
-COPY CMakeLists.txt CMakePresets.json .
-COPY ml/backend/ggml/ggml ml/backend/ggml/ggml
-ENV LDFLAGS=-s
-
-# ---------------- CPU ----------------
-FROM base AS cpu
-RUN dnf install -y gcc-toolset-11-gcc gcc-toolset-11-gcc-c++
-ENV PATH=/opt/rh/gcc-toolset-11/root/usr/bin:$PATH
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-cpu,key=ccache-cpu,target=/root/.ccache \
-    cmake --preset 'CPU' \
-    && cmake --build --parallel ${PARALLEL} --preset 'CPU' \
-    && cmake --install build --component CPU --strip --parallel ${PARALLEL}
-
-# ---------------- CUDA 11 ----------------
-FROM base AS cuda-11
-ARG CUDA11VERSION=11.8
-RUN dnf install -y cuda-toolkit-${CUDA11VERSION//./-}
-ENV PATH=/usr/local/cuda-11/bin:$PATH
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-cuda11,key=ccache-cuda11,target=/root/.ccache \
-    cmake --preset 'CUDA 11' -DOLLAMA_RUNNER_DIR="cuda_v11" \
-    && cmake --build --parallel ${PARALLEL} --preset 'CUDA 11' \
-    && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
-
-# ---------------- CUDA 12 ----------------
-FROM base AS cuda-12
-ARG CUDA12VERSION=12.8
-RUN dnf install -y cuda-toolkit-${CUDA12VERSION//./-}
-ENV PATH=/usr/local/cuda-12/bin:$PATH
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-cuda12,key=ccache-cuda12,target=/root/.ccache \
-    cmake --preset 'CUDA 12' -DOLLAMA_RUNNER_DIR="cuda_v12" \
-    && cmake --build --parallel ${PARALLEL} --preset 'CUDA 12' \
-    && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
-
-# ---------------- CUDA 13 ----------------
-FROM base AS cuda-13
-ARG CUDA13VERSION=13.0
-RUN dnf install -y cuda-toolkit-${CUDA13VERSION//./-}
-ENV PATH=/usr/local/cuda-13/bin:$PATH
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-cuda13,key=ccache-cuda13,target=/root/.ccache \
-    cmake --preset 'CUDA 13' -DOLLAMA_RUNNER_DIR="cuda_v13" \
-    && cmake --build --parallel ${PARALLEL} --preset 'CUDA 13' \
-    && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
-
-# ---------------- ROCm ----------------
-FROM base AS rocm-6
-ENV PATH=/opt/rocm/hcc/bin:/opt/rocm/hip/bin:/opt/rocm/bin:$PATH
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-rocm,key=ccache-rocm,target=/root/.ccache \
-    cmake --preset 'ROCm 6' -DOLLAMA_RUNNER_DIR="rocm" \
-    && cmake --build --parallel ${PARALLEL} --preset 'ROCm 6' \
-    && cmake --install build --component HIP --strip --parallel ${PARALLEL}
-RUN rm -f dist/lib/ollama/rocm/rocblas/library/*gfx90[06]*
-
-# ---------------- JetPack 5 ----------------
-FROM --platform=linux/arm64 nvcr.io/nvidia/l4t-jetpack:${JETPACK5VERSION} AS jetpack-5
-ARG CMAKEVERSION
-RUN apt-get update && apt-get install -y curl ccache \
-    && curl -fsSL https://github.com/Kitware/CMake/releases/download/v${CMAKEVERSION}/cmake-${CMAKEVERSION}-linux-$(uname -m).tar.gz | tar xz -C /usr/local --strip-components 1
-COPY CMakeLists.txt CMakePresets.json .
-COPY ml/backend/ggml/ggml ml/backend/ggml/ggml
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-jetpack5,key=ccache-jetpack5,target=/root/.ccache \
-    cmake --preset 'JetPack 5' -DOLLAMA_RUNNER_DIR="cuda_jetpack5" \
-    && cmake --build --parallel ${PARALLEL} --preset 'JetPack 5' \
-    && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
-
-# ---------------- JetPack 6 ----------------
-FROM --platform=linux/arm64 nvcr.io/nvidia/l4t-jetpack:${JETPACK6VERSION} AS jetpack-6
-ARG CMAKEVERSION
-RUN apt-get update && apt-get install -y curl ccache \
-    && curl -fsSL https://github.com/Kitware/CMake/releases/download/v${CMAKEVERSION}/cmake-${CMAKEVERSION}-linux-$(uname -m).tar.gz | tar xz -C /usr/local --strip-components 1
-COPY CMakeLists.txt CMakePresets.json .
-COPY ml/backend/ggml/ggml ml/backend/ggml/ggml
-ARG PARALLEL
-RUN --mount=type=cache,id=ccache-jetpack6,key=ccache-jetpack6,target=/root/.ccache \
-    cmake --preset 'JetPack 6' -DOLLAMA_RUNNER_DIR="cuda_jetpack6" \
-    && cmake --build --parallel ${PARALLEL} --preset 'JetPack 6' \
-    && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
-
-# ---------------- Vulkan ----------------
-FROM base AS vulkan
-RUN --mount=type=cache,id=ccache-vulkan,key=ccache-vulkan,target=/root/.ccache \
-    cmake --preset 'Vulkan' -DOLLAMA_RUNNER_DIR="vulkan" \
-    && cmake --build --parallel --preset 'Vulkan' \
-    && cmake --install build --component Vulkan --strip --parallel 8 
-
-# ---------------- Go Build ----------------
-FROM base AS build
-WORKDIR /go/src/github.com/ollama/ollama
-COPY go.mod go.sum .
-RUN curl -fsSL https://golang.org/dl/go$(awk '/^go/ { print $2 }' go.mod).linux-$(case $(uname -m) in x86_64) echo amd64 ;; aarch64) echo arm64 ;; esac).tar.gz | tar xz -C /usr/local
-ENV PATH=/usr/local/go/bin:$PATH
-RUN go mod download
+# Copy your project
 COPY . .
-ARG GOFLAGS="'-ldflags=-w -s'"
-ENV CGO_ENABLED=1
-ARG CGO_CFLAGS
-ARG CGO_CXXFLAGS
-RUN --mount=type=cache,id=go-build-cache,key=go-build-cache,target=/root/.cache/go-build \
-    go build -trimpath -buildmode=pie -o /bin/ollama .
 
-# ---------------- Final Stages ----------------
-FROM --platform=linux/amd64 scratch AS amd64
-COPY --from=cuda-12 dist/lib/ollama /lib/ollama/
-COPY --from=cuda-13 dist/lib/ollama /lib/ollama/
-COPY --from=vulkan dist/lib/ollama /lib/ollama/
+# Install system dependencies
+RUN apt-get update && apt-get install -y curl git build-essential cmake
 
-FROM --platform=linux/arm64 scratch AS arm64
-COPY --from=cuda-12 dist/lib/ollama /lib/ollama/
-COPY --from=cuda-13 dist/lib/ollama /lib/ollama/
-COPY --from=jetpack-5 dist/lib/ollama/ /lib/ollama/
-COPY --from=jetpack-6 dist/lib/ollama/ /lib/ollama/
+# Install Python dependencies
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
-FROM scratch AS rocm
-COPY --from=rocm-6 dist/lib/ollama /lib/ollama
+# ---- Build Ollama from source ----
+WORKDIR /app/ollama
 
-FROM ${FLAVOR} AS archive
-ARG VULKANVERSION
-COPY --from=cpu dist/lib/ollama /lib/ollama
-COPY --from=build /bin/ollama /bin/ollama
+# Install Go (required by Ollama)
+RUN curl -fsSL https://go.dev/dl/go1.22.4.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+ENV PATH="/usr/local/go/bin:${PATH}"
 
-FROM ubuntu:24.04 AS default
-RUN apt-get update && apt-get install -y ca-certificates libvulkan1 && apt-get clean && rm -rf /var/lib/apt/lists/*
-COPY --from=archive /bin /usr/bin
-COPY --from=archive /lib/ollama /usr/lib/ollama
-ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV OLLAMA_HOST=0.0.0.0:11434
-EXPOSE 11434
-ENTRYPOINT ["/bin/ollama"]
-CMD ["serve"]
+# Build Ollama binary
+RUN go mod download && go build -o /usr/local/bin/ollama .
+
+# ---- Back to app root ----
+WORKDIR /app
+
+# Expose ports
+EXPOSE 8080 11434
+
+# ---- Run both Ollama and FastAPI ----
+CMD bash -c "ollama serve & uvicorn backend.main:app --host 0.0.0.0 --port 8080"
