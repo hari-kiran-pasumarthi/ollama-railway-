@@ -10,16 +10,6 @@ COPY . .
 RUN apt-get update && apt-get install -y curl git build-essential cmake
 
 # ---- Install Python dependencies manually ----
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    requests \
-    tensorflow==2.15.0 \
-    tf-keras \
-    deepface \
-    retinaface \
-    pydantic \
-    python-multipart
 
 # ---- Build Ollama from source ----
 WORKDIR /app/ollama
