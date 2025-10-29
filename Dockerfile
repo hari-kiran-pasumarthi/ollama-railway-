@@ -13,9 +13,11 @@ RUN curl -L -o ollama.tgz https://github.com/ollama/ollama/releases/latest/downl
     && chmod +x /usr/local/bin/ollama \
     && rm -rf ollama.tgz
 
+ENV OLLAMA_HOST=0.0.0.0:11434
+
 # Expose Ollama port
 EXPOSE 11434
 
 # Start Ollama
-CMD ["ollama", "serve", "--host", "0.0.0.0"]
+CMD ["ollama", "serve"]
 
