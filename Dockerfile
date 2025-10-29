@@ -57,7 +57,7 @@ ARG CUDA11VERSION=11.8
 RUN dnf install -y cuda-toolkit-${CUDA11VERSION//./-}
 ENV PATH=/usr/local/cuda-11/bin:$PATH
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-cuda11,target=/root/.ccache \
     cmake --preset 'CUDA 11' -DOLLAMA_RUNNER_DIR="cuda_v11" \
         && cmake --build --parallel ${PARALLEL} --preset 'CUDA 11' \
         && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
@@ -67,7 +67,7 @@ ARG CUDA12VERSION=12.8
 RUN dnf install -y cuda-toolkit-${CUDA12VERSION//./-}
 ENV PATH=/usr/local/cuda-12/bin:$PATH
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-cuda12,target=/root/.ccache \
     cmake --preset 'CUDA 12' -DOLLAMA_RUNNER_DIR="cuda_v12"\
         && cmake --build --parallel ${PARALLEL} --preset 'CUDA 12' \
         && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
@@ -78,7 +78,7 @@ ARG CUDA13VERSION=13.0
 RUN dnf install -y cuda-toolkit-${CUDA13VERSION//./-}
 ENV PATH=/usr/local/cuda-13/bin:$PATH
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-cuda13,target=/root/.ccache \
     cmake --preset 'CUDA 13' -DOLLAMA_RUNNER_DIR="cuda_v13" \
         && cmake --build --parallel ${PARALLEL} --preset 'CUDA 13' \
         && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
@@ -87,7 +87,7 @@ RUN --mount=type=cache,target=/root/.ccache \
 FROM base AS rocm-6
 ENV PATH=/opt/rocm/hcc/bin:/opt/rocm/hip/bin:/opt/rocm/bin:/opt/rocm/hcc/bin:$PATH
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-rocm,target=/root/.ccache \
     cmake --preset 'ROCm 6' -DOLLAMA_RUNNER_DIR="rocm" \
         && cmake --build --parallel ${PARALLEL} --preset 'ROCm 6' \
         && cmake --install build --component HIP --strip --parallel ${PARALLEL}
@@ -100,7 +100,7 @@ RUN apt-get update && apt-get install -y curl ccache \
 COPY CMakeLists.txt CMakePresets.json .
 COPY ml/backend/ggml/ggml ml/backend/ggml/ggml
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-jetpack5,target=/root/.ccache \
     cmake --preset 'JetPack 5' -DOLLAMA_RUNNER_DIR="cuda_jetpack5" \
         && cmake --build --parallel ${PARALLEL} --preset 'JetPack 5' \
         && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
@@ -112,13 +112,13 @@ RUN apt-get update && apt-get install -y curl ccache \
 COPY CMakeLists.txt CMakePresets.json .
 COPY ml/backend/ggml/ggml ml/backend/ggml/ggml
 ARG PARALLEL
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-jetpack6,target=/root/.ccache \
     cmake --preset 'JetPack 6' -DOLLAMA_RUNNER_DIR="cuda_jetpack6" \
         && cmake --build --parallel ${PARALLEL} --preset 'JetPack 6' \
         && cmake --install build --component CUDA --strip --parallel ${PARALLEL}
 
 FROM base AS vulkan
-RUN --mount=type=cache,target=/root/.ccache \
+RUN --mount=type=cache,id=ccache-vulkan,target=/root/.ccache \
     cmake --preset 'Vulkan' -DOLLAMA_RUNNER_DIR="vulkan" \
         && cmake --build --parallel --preset 'Vulkan' \
         && cmake --install build --component Vulkan --strip --parallel 8 
@@ -135,7 +135,7 @@ ARG GOFLAGS="'-ldflags=-w -s'"
 ENV CGO_ENABLED=1
 ARG CGO_CFLAGS
 ARG CGO_CXXFLAGS
-RUN --mount=type=cache,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build \
     go build -trimpath -buildmode=pie -o /bin/ollama .
 
 FROM --platform=linux/amd64 scratch AS amd64
