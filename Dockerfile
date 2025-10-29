@@ -3,21 +3,18 @@ FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install dependencies
-RUN apt-get update && apt-get install -y curl tar ca-certificates findutils && rm -rf /var/lib/apt/lists/*
+# Install curl, tar, and SSL certificates
+RUN apt-get update && apt-get install -y curl tar ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Download and install Ollama binary safely
+# Download and install Ollama binary
 RUN curl -L -o ollama.tgz https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64.tgz \
     && tar -xzf ollama.tgz \
-    && mv $(find . -type f -name "ollama*" -perm /111 | head -n 1) /usr/local/bin/ollama \
+    && mv ollama /usr/local/bin/ollama \
     && chmod +x /usr/local/bin/ollama \
-    && rm -rf ollama.tgz
+    && rm ollama.tgz
 
-ENV OLLAMA_HOST=0.0.0.0:11434
-
-# Expose Ollama port
+# Expose Ollama’s default port
 EXPOSE 11434
 
-# Start Ollama
+# ✅ Define the start command so Railway knows what to run
 CMD ["ollama", "serve"]
-
