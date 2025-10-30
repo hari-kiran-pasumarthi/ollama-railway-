@@ -19,4 +19,6 @@ ENV OLLAMA_HOST=0.0.0.0:11434
 EXPOSE 11434
 
 # Start the Ollama service
+
+CMD sh -c "/usr/local/bin/ollama serve & sleep 15 && until /usr/local/bin/ollama pull llama3; do sleep 5; done && tail -f /dev/null"
 CMD ["ollama", "serve"]
